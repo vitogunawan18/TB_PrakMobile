@@ -1,0 +1,54 @@
+import 'package:flutter/material.dart';
+// auth pages are imported via the splash/route flow when needed
+import 'pages/splash_page.dart';
+import 'services/api_service.dart';
+import 'services/auth_manager.dart';
+import 'theme/app_theme.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final ApiService _api;
+  late final AuthManager _auth;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService(null, () async {
+      await _auth.clearToken();
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+    });
+    _auth = AuthManager(_api);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'Educational Ticketing',
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
+      home: SplashPage(apiService: _api, authManager: _auth),
+      onGenerateRoute: (settings) {
+        if (settings.name == '/') {
+          return MaterialPageRoute(
+            builder: (_) => SplashPage(apiService: _api, authManager: _auth),
+          );
+        }
+        return null;
+      },
+    );
+  }
+}
