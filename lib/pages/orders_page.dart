@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import 'order_detail_page.dart';
 import 'payment_page.dart';
 
@@ -89,7 +90,7 @@ class OrdersPageState extends State<OrdersPage> {
       await widget.apiService.cancelOrder(id);
       await _loadOrders(page: 1);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal membatalkan: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal membatalkan: $e', style: const TextStyle(color: Colors.white)), backgroundColor: AppTheme.statusExpired));
     }
   }
 
@@ -100,14 +101,40 @@ class OrdersPageState extends State<OrdersPage> {
     super.dispose();
   }
 
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return AppTheme.statusPending;
+      case 'success':
+      case 'completed':
+        return AppTheme.statusSuccess;
+      case 'cancelled':
+      case 'expired':
+      default:
+        return AppTheme.statusExpired;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: AppTheme.bgPrimary,
         appBar: AppBar(
-          title: const Text('Daftar Pesanan'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: const Text(
+            'Daftar Pesanan',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
           bottom: const TabBar(
+            indicatorColor: AppTheme.accentPrimary,
+            indicatorSize: TabBarIndicatorSize.tab,
+            labelColor: Colors.white,
+            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            unselectedLabelColor: AppTheme.textSecondary,
+            unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
             tabs: [
               Tab(text: 'Pending'),
               Tab(text: 'Selesai / Batal'),
@@ -118,10 +145,10 @@ class OrdersPageState extends State<OrdersPage> {
           children: [
             if (!_online)
               Container(
-                color: Colors.red.shade100,
+                color: AppTheme.statusExpired.withOpacity(0.2),
                 width: double.infinity,
                 padding: const EdgeInsets.all(8),
-                child: const Text('Anda sedang offline', textAlign: TextAlign.center),
+                child: const Text('Anda sedang offline', textAlign: TextAlign.center, style: TextStyle(color: Colors.white)),
               ),
             Expanded(
               child: TabBarView(
@@ -152,12 +179,12 @@ class OrdersPageState extends State<OrdersPage> {
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ListView(children: [Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))])
+              ? ListView(children: [Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, style: const TextStyle(color: AppTheme.textSecondary))))])
               : filtered.isEmpty
-                  ? ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Belum ada pesanan.')))])
+                  ? ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Belum ada pesanan.', style: TextStyle(color: AppTheme.textSecondary))))])
                   : ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80), // extra padding at bottom to clear floating bottom bar
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: filtered.length + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (context, idx) {
@@ -166,55 +193,125 @@ class OrdersPageState extends State<OrdersPage> {
                         }
                         final o = filtered[idx] as Map<String, dynamic>;
                         final status = o['status'] ?? '-';
-                        return Card(
+                        final statusColor = _getStatusColor(status);
+                        
+                        return Container(
                           margin: const EdgeInsets.symmetric(vertical: 8),
-                          child: ListTile(
-                            title: Text('Order ${o['order_code'] ?? o['id'] ?? '-'}'),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Status: ${status.toUpperCase()}'),
-                                if (o['total_amount'] != null) ...[
-                                  const SizedBox(height: 4),
-                                  Text('Total: Rp ${o['total_amount']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ],
-                            ),
-                            trailing: o['status'] == 'pending'
-                                ? Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => PaymentPage(apiService: widget.apiService, orderId: o['id'] as int),
-                                            ),
-                                          ).then((_) => _loadOrders(page: 1));
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        ),
-                                        child: const Text('Bayar'),
+                          decoration: BoxDecoration(
+                            color: AppTheme.cardSurface.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withOpacity(0.06)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(color: statusColor, width: 4.5),
+                                ),
+                              ),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                title: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Order #${o['order_code'] ?? o['id'] ?? '-'}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: statusColor.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
-                                      const SizedBox(width: 8),
-                                      TextButton(
-                                        onPressed: () => _cancelOrder(o['id'] as int),
-                                        style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                        child: const Text('Batal'),
+                                      child: Text(
+                                        status.toString().toUpperCase(),
+                                        style: TextStyle(
+                                          color: statusColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(height: 8),
+                                    if (o['total_amount'] != null) ...[
+                                      Text(
+                                        'Total: Rp ${o['total_amount']}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.accentPrimary,
+                                          fontSize: 15,
+                                        ),
                                       ),
                                     ],
-                                  )
-                                : null,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => OrderDetailPage(apiService: widget.apiService, orderId: o['id'] as int),
+                                    if (o['status'] == 'pending') ...[
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          // Action button Bayar (Gradient)
+                                          Container(
+                                            decoration: AppTheme.gradientButtonDecoration(),
+                                            child: ElevatedButton(
+                                              onPressed: () {
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) => PaymentPage(apiService: widget.apiService, orderId: o['id'] as int),
+                                                  ),
+                                                ).then((_) => _loadOrders(page: 1));
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.transparent,
+                                                shadowColor: Colors.transparent,
+                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              ),
+                                              child: const Text('Bayar', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // Action button Batal (Red outline)
+                                          OutlinedButton(
+                                            onPressed: () => _cancelOrder(o['id'] as int),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: AppTheme.statusExpired,
+                                              side: const BorderSide(color: AppTheme.statusExpired, width: 1.2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              minimumSize: Size.zero,
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            ),
+                                            child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                          ),
+                                        ],
+                                      ),
+                                    ]
+                                  ],
                                 ),
-                              ).then((_) => _loadOrders(page: 1));
-                            },
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => OrderDetailPage(apiService: widget.apiService, orderId: o['id'] as int),
+                                    ),
+                                  ).then((_) => _loadOrders(page: 1));
+                                },
+                              ),
+                            ),
                           ),
                         );
                       },

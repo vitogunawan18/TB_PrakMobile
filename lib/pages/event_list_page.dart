@@ -4,9 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'event_detail_page.dart';
-import 'tickets_page.dart';
-import 'orders_page.dart';
-import 'profile_page.dart';
+import '../theme/app_theme.dart';
 
 class EventListPage extends StatefulWidget {
   final ApiService apiService;
@@ -67,23 +65,12 @@ class _EventListPageState extends State<EventListPage> {
   }
 
   void _onSearchChanged() {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      _savePreferences();
-      _page = 1;
-      _hasMore = true;
-      _loadEvents();
-    });
+    setState(() {});
   }
 
   void _onCityChanged() {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      _savePreferences();
-      _page = 1;
-      _hasMore = true;
-      _loadEvents();
-    });
+    setState(() {});
+    _savePreferences();
   }
 
   void _onScroll() {
@@ -91,6 +78,37 @@ class _EventListPageState extends State<EventListPage> {
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       _loadMore();
     }
+  }
+
+  List<dynamic> get _filteredEvents {
+    final queryText = _searchController.text.toLowerCase().trim();
+    final cityText = _cityController.text.toLowerCase().trim();
+    return _events.where((event) {
+      final title = (event['title'] as String? ?? '').toLowerCase();
+      final city = (event['city'] as String? ?? event['venue']?['city'] as String? ?? '').toLowerCase();
+      final category = (event['category']?['name'] as String? ?? '').toLowerCase();
+      
+      bool matchesQuery = true;
+      if (queryText.isNotEmpty) {
+        final tokens = queryText.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
+        matchesQuery = tokens.every((token) {
+          if (token == 'edufair') {
+            return title.contains('edu') || title.contains('fair') || category.contains('edu');
+          }
+          return title.contains(token) || city.contains(token) || category.contains(token);
+        });
+      }
+      
+      bool matchesCity = true;
+      if (cityText.isNotEmpty) {
+        final tokens = cityText.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
+        matchesCity = tokens.every((token) {
+          return city.contains(token);
+        });
+      }
+      
+      return matchesQuery && matchesCity;
+    }).toList();
   }
 
   Future<void> _loadEvents({int page = 1}) async {
@@ -106,21 +124,19 @@ class _EventListPageState extends State<EventListPage> {
     try {
       final events = await widget.apiService.fetchEvents(
         page: page,
-        perPage: 10,
-        query: _searchController.text.trim(),
+        perPage: 100,
         categoryId: _selectedCategoryId,
-        city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
       );
       if (page == 1) {
         setState(() {
           _events = events;
           _page = 1;
-          _hasMore = events.length >= 10;
+          _hasMore = events.length >= 100;
         });
       } else {
         setState(() {
           _events.addAll(events);
-          _hasMore = events.length >= 10;
+          _hasMore = events.length >= 100;
         });
       }
     } catch (error) {
@@ -152,46 +168,33 @@ class _EventListPageState extends State<EventListPage> {
     }
   }
 
+  String _formatDate(String isoString) {
+    try {
+      final dateTime = DateTime.parse(isoString);
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return '${dateTime.day} ${months[dateTime.month - 1]} ${dateTime.year}';
+    } catch (_) {
+      return isoString;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
-        title: const Text('Daftar Event'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => OrdersPage(apiService: widget.apiService),
-                ),
-              );
-            },
-            tooltip: 'Pesanan',
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        title: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Colors.white, AppTheme.textSecondary],
+          ).createShader(bounds),
+          child: const Text(
+            'Temukan Event',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white),
           ),
-          IconButton(
-            icon: const Icon(Icons.confirmation_num),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TicketsPage(apiService: widget.apiService),
-                ),
-              );
-            },
-            tooltip: 'Tiket Saya',
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ProfilePage(apiService: widget.apiService, authManager: widget.authManager),
-                ),
-              );
-            },
-            tooltip: 'Profil',
-          ),
-        ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -201,39 +204,64 @@ class _EventListPageState extends State<EventListPage> {
         },
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
+            // Glassmorphic Search and City filter bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              margin: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.cardSurface.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.accentSecondary.withOpacity(0.1), width: 1.2),
+              ),
               child: Row(
                 children: [
+                  const SizedBox(width: 8),
+                  const Icon(Icons.search, color: AppTheme.accentPrimary, size: 20),
+                  const SizedBox(width: 8),
                   Expanded(
                     flex: 3,
                     child: TextField(
                       controller: _searchController,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                       decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
                         hintText: 'Cari event...',
-                        border: OutlineInputBorder(),
+                        hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 1,
+                    height: 20,
+                    color: Colors.white.withOpacity(0.12),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.location_on, color: AppTheme.accentPrimary, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     flex: 2,
                     child: TextField(
                       controller: _cityController,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                       decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.location_on),
                         hintText: 'Kota...',
-                        border: OutlineInputBorder(),
+                        hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                 ],
               ),
             ),
+            
+            // Category Chips Slider
             if (_categories.isNotEmpty)
               SizedBox(
-                height: 56,
+                height: 48,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -244,68 +272,211 @@ class _EventListPageState extends State<EventListPage> {
                     final name = c['name'] ?? 'Kategori';
                     final selected = id != null && id == _selectedCategoryId;
                     return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(name),
-                        selected: selected,
-                        onSelected: (v) {
+                      padding: const EdgeInsets.only(right: 8, bottom: 8),
+                      child: GestureDetector(
+                        onTap: () {
                           setState(() {
-                            _selectedCategoryId = v ? id : null;
+                            _selectedCategoryId = selected ? null : id;
                             _page = 1;
                             _hasMore = true;
                           });
                           _savePreferences();
                           _loadEvents(page: 1);
                         },
+                        child: Container(
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: selected
+                              ? AppTheme.gradientButtonDecoration()
+                              : BoxDecoration(
+                                  color: AppTheme.cardSurface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                                ),
+                          child: Text(
+                            name,
+                            style: TextStyle(
+                              color: selected ? Colors.white : AppTheme.textSecondary,
+                              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
                 ),
               ),
+            
+            // Events Card List View
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _errorMessage != null
-                      ? ListView(children: [Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_errorMessage!)))])
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _events.length + (_isLoadingMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index >= _events.length) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
-                            final event = _events[index] as Map<String, dynamic>;
-                            return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              child: ListTile(
-                                leading: (event['poster_url'] as String?) != null
-                                    ? SizedBox(
-                                        width: 56,
-                                        height: 56,
-                                        child: CachedNetworkImage(
-                                          imageUrl: event['poster_url'] as String,
-                                          fit: BoxFit.cover,
-                                          placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                          errorWidget: (context, url, error) => const Icon(Icons.image_not_supported),
+                      ? ListView(children: [Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_errorMessage!, style: const TextStyle(color: AppTheme.textSecondary))))])
+                      : _filteredEvents.isEmpty
+                          ? const Center(child: Text('Tidak ada event yang ditemukan', style: TextStyle(color: AppTheme.textSecondary)))
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), // extra padding at bottom to clear floating nav
+                              itemCount: _filteredEvents.length + (_isLoadingMore ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (index >= _filteredEvents.length) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+                                final event = _filteredEvents[index] as Map<String, dynamic>;
+                                return GestureDetector(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => EventDetailPage(
+                                          apiService: widget.apiService,
+                                          eventId: event['id'] as int,
                                         ),
-                                      )
-                                    : null,
-                                title: Text(event['title'] ?? 'Tidak ada judul'),
-                                subtitle: Text(event['city'] ?? 'Kota tidak tersedia'),
-                                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => EventDetailPage(
-                                        apiService: widget.apiService,
-                                        eventId: event['id'] as int,
                                       ),
+                                    );
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.cardSurface.withOpacity(0.85),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppTheme.accentSecondary.withOpacity(0.1), width: 1.2),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Poster Image (16:9)
+                                        ClipRRect(
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(20),
+                                            topRight: Radius.circular(20),
+                                          ),
+                                          child: AspectRatio(
+                                            aspectRatio: 16 / 9,
+                                            child: (event['poster_url'] as String?) != null
+                                                ? CachedNetworkImage(
+                                                    imageUrl: AppTheme.getDirectImageUrl(event['poster_url'] as String?),
+                                                    fit: BoxFit.cover,
+                                                    placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                                    errorWidget: (context, url, error) => CachedNetworkImage(
+                                                      imageUrl: AppTheme.getEventPlaceholder(event['title'] as String?, event['category']?['name'] as String?),
+                                                      fit: BoxFit.cover,
+                                                      placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                                      errorWidget: (context, url, err) => Container(
+                                                        color: AppTheme.cardSurface,
+                                                        child: const Icon(Icons.image, size: 40, color: AppTheme.textSecondary),
+                                                      ),
+                                                    ),
+                                                  )
+                                                : Container(
+                                                    color: AppTheme.cardSurface,
+                                                    child: const Icon(Icons.image, size: 40, color: AppTheme.textSecondary),
+                                                  ),
+                                          ),
+                                        ),
+                                        
+                                        // Card Details Body
+                                        Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Category Badge
+                                              if (event['category']?['name'] != null)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.accentSecondary.withOpacity(0.15),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    event['category']['name'] as String,
+                                                    style: const TextStyle(
+                                                      color: AppTheme.accentPrimary,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              if (event['category']?['name'] != null) const SizedBox(height: 8),
+
+                                              // Event Title
+                                              Text(
+                                                event['title'] ?? 'Tidak ada judul',
+                                                style: const TextStyle(
+                                                  fontSize: 17,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 8),
+
+                                              // Location Row
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.location_on, size: 14, color: AppTheme.accentPrimary),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Text(
+                                                      event['city'] ?? event['venue']?['city'] ?? 'Kota tidak tersedia',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: AppTheme.textSecondary,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 12),
+                                              
+                                              // Divider separator
+                                              Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                                              const SizedBox(height: 12),
+                                              
+                                              // Bottom Row: Date & Ticket Price
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    event['event_at'] != null 
+                                                        ? _formatDate(event['event_at'] as String)
+                                                        : 'Tanggal tidak tersedia',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: AppTheme.textSecondary.withOpacity(0.7),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    event['min_price'] != null 
+                                                        ? 'Mulai Rp ${event['min_price']}'
+                                                        : 'Tiket tersedia',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: AppTheme.accentPrimary,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
             ),
           ],
         ),

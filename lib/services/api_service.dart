@@ -161,10 +161,13 @@ class ApiService {
       return body as Map<String, dynamic>;
     }
     if (response.statusCode == 401) {
-      // notify caller to clear local auth
-      try {
-        if (onUnauthorized != null) onUnauthorized!();
-      } catch (_) {}
+      // notify caller to clear local auth (skip for login/register endpoints)
+      final path = response.request?.url.path ?? '';
+      if (!path.contains('/auth/login') && !path.contains('/auth/register')) {
+        try {
+          if (onUnauthorized != null) onUnauthorized!();
+        } catch (_) {}
+      }
       throw UnauthorizedException(body['message'] ?? 'Unauthorized');
     }
     throw Exception(body['message'] ?? 'API error: ${response.statusCode}');
