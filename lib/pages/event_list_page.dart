@@ -29,6 +29,11 @@ class _EventListPageState extends State<EventListPage> {
   bool _isLoadingMore = false;
   List<dynamic> _categories = [];
   int? _selectedCategoryId;
+  final LayerLink _cityDropdownLink = LayerLink();
+  OverlayEntry? _cityDropdownEntry;
+  bool get _isCityDropdownOpen => _cityDropdownEntry != null;
+  final TextEditingController _citySearchController = TextEditingController();
+  bool _isCitySearchFocused = false;
 
   @override
   void initState() {
@@ -71,6 +76,232 @@ class _EventListPageState extends State<EventListPage> {
   void _onCityChanged() {
     setState(() {});
     _savePreferences();
+  }
+
+  List<String> get _availableCities {
+    final cities = <String>{};
+    for (final event in _events) {
+      final city = (event['city'] as String? ?? event['venue']?['city'] as String? ?? '').trim();
+      if (city.isNotEmpty) {
+        cities.add(city);
+      }
+    }
+    final list = cities.toList()..sort();
+    final current = _cityController.text.trim();
+    if (current.isNotEmpty && !list.contains(current)) {
+      list.add(current);
+      list.sort();
+    }
+    return list;
+  }
+
+  void _toggleCityDropdown() {
+    if (_isCityDropdownOpen) {
+      _closeCityDropdown();
+    } else {
+      _openCityDropdown();
+    }
+  }
+
+  void _openCityDropdown() {
+    _citySearchController.clear();
+    _isCitySearchFocused = false;
+    _cityDropdownEntry = _createCityDropdownEntry();
+    Overlay.of(context).insert(_cityDropdownEntry!);
+    setState(() {});
+  }
+
+  void _closeCityDropdown() {
+    if (_cityDropdownEntry != null) {
+      _cityDropdownEntry!.remove();
+      _cityDropdownEntry = null;
+      setState(() {});
+    }
+  }
+
+  OverlayEntry _createCityDropdownEntry() {
+    RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    var size = renderBox?.size ?? Size.zero;
+
+    return OverlayEntry(
+      builder: (context) {
+        return Stack(
+          children: [
+            GestureDetector(
+              onTap: _closeCityDropdown,
+              behavior: HitTestBehavior.translucent,
+              child: Container(
+                color: Colors.transparent,
+              ),
+            ),
+            Positioned(
+              width: 220,
+              child: CompositedTransformFollower(
+                link: _cityDropdownLink,
+                showWhenUnlinked: false,
+                targetAnchor: Alignment.bottomRight,
+                followerAnchor: Alignment.topRight,
+                offset: const Offset(0, 8),
+                child: Material(
+                  color: Colors.transparent,
+                  child: StatefulBuilder(
+                    builder: (context, setModalState) {
+                      final query = _citySearchController.text.toLowerCase().trim();
+                      final allCities = _availableCities;
+                      final filteredCities = allCities.where((city) => city.toLowerCase().contains(query)).toList();
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: AppTheme.cardSurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppTheme.accentSecondary.withOpacity(0.2), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.5),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                              child: Focus(
+                                onFocusChange: (hasFocus) {
+                                  setModalState(() {
+                                    _isCitySearchFocused = hasFocus;
+                                  });
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.bgPrimary.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: _isCitySearchFocused
+                                          ? AppTheme.accentPrimary
+                                          : AppTheme.accentSecondary.withOpacity(0.15),
+                                      width: _isCitySearchFocused ? 1.5 : 1.0,
+                                    ),
+                                    boxShadow: _isCitySearchFocused
+                                        ? [
+                                            BoxShadow(
+                                              color: AppTheme.accentPrimary.withOpacity(0.15),
+                                              blurRadius: 8,
+                                              spreadRadius: 1,
+                                            )
+                                          ]
+                                        : null,
+                                  ),
+                                  child: TextField(
+                                    controller: _citySearchController,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                                    onChanged: (_) {
+                                      setModalState(() {});
+                                    },
+                                    decoration: InputDecoration(
+                                      hintText: 'Cari kota...',
+                                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                                      prefixIcon: const Icon(Icons.search, color: AppTheme.accentPrimary, size: 16),
+                                      suffixIcon: _citySearchController.text.isNotEmpty
+                                          ? GestureDetector(
+                                              onTap: () {
+                                                _citySearchController.clear();
+                                                setModalState(() {});
+                                              },
+                                              child: const Icon(Icons.clear, color: AppTheme.textSecondary, size: 14),
+                                            )
+                                          : null,
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Divider(color: Colors.white.withOpacity(0.06), height: 1),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 200,
+                              ),
+                              child: ListView(
+                                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                shrinkWrap: true,
+                                children: [
+                                  if (query.isEmpty) ...[
+                                    ListTile(
+                                      visualDensity: VisualDensity.compact,
+                                      title: const Text(
+                                        'Semua Kota',
+                                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                      ),
+                                      selected: _cityController.text.isEmpty,
+                                      selectedTileColor: AppTheme.accentSecondary.withOpacity(0.15),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      onTap: () {
+                                        _cityController.text = '';
+                                        _closeCityDropdown();
+                                      },
+                                    ),
+                                    Divider(color: Colors.white.withOpacity(0.04), height: 8),
+                                  ],
+                                  if (filteredCities.isEmpty && query.isNotEmpty)
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 16),
+                                      child: Center(
+                                        child: Text(
+                                          'Tidak ditemukan',
+                                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    ...filteredCities.map((city) {
+                                      final isSelected = _cityController.text == city;
+                                      return ListTile(
+                                        visualDensity: VisualDensity.compact,
+                                        title: Text(
+                                          city,
+                                          style: TextStyle(
+                                            color: isSelected ? AppTheme.accentPrimary : Colors.white,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        selected: isSelected,
+                                        selectedTileColor: AppTheme.accentSecondary.withOpacity(0.15),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        trailing: isSelected
+                                            ? const Icon(Icons.check, color: AppTheme.accentPrimary, size: 16)
+                                            : null,
+                                        onTap: () {
+                                          _cityController.text = city;
+                                          _closeCityDropdown();
+                                        },
+                                      );
+                                    }),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _onScroll() {
@@ -242,14 +473,24 @@ class _EventListPageState extends State<EventListPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     flex: 2,
-                    child: TextField(
-                      controller: _cityController,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                      decoration: const InputDecoration(
-                        hintText: 'Kota...',
-                        hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                    child: CompositedTransformTarget(
+                      link: _cityDropdownLink,
+                      child: GestureDetector(
+                        onTap: _toggleCityDropdown,
+                        behavior: HitTestBehavior.opaque,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _cityController.text.trim().isEmpty ? 'Semua' : _cityController.text.trim(),
+                                style: const TextStyle(color: Colors.white, fontSize: 14),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const Icon(Icons.arrow_drop_down, color: AppTheme.textSecondary, size: 20),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -260,32 +501,43 @@ class _EventListPageState extends State<EventListPage> {
             
             // Category Chips Slider
             if (_categories.isNotEmpty)
-              SizedBox(
-                height: 48,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, i) {
-                    final c = _categories[i] as Map<String, dynamic>;
-                    final id = c['id'] as int?;
-                    final name = c['name'] ?? 'Kategori';
-                    final selected = id != null && id == _selectedCategoryId;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8, bottom: 8),
-                      child: GestureDetector(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: List.generate(_categories.length + 1, (i) {
+                      final bool isAllChip = i == 0;
+                      final bool selected = isAllChip
+                          ? _selectedCategoryId == null
+                          : (_categories[i - 1]['id'] != null && _categories[i - 1]['id'] == _selectedCategoryId);
+                      final String name = isAllChip ? 'Semua' : (_categories[i - 1]['name'] ?? 'Kategori');
+
+                      return GestureDetector(
                         onTap: () {
-                          setState(() {
-                            _selectedCategoryId = selected ? null : id;
-                            _page = 1;
-                            _hasMore = true;
-                          });
+                          if (isAllChip) {
+                            if (_selectedCategoryId == null) return; // already selected
+                            setState(() {
+                              _selectedCategoryId = null;
+                              _page = 1;
+                              _hasMore = true;
+                            });
+                          } else {
+                            final id = _categories[i - 1]['id'] as int?;
+                            if (id == _selectedCategoryId) return; // already selected
+                            setState(() {
+                              _selectedCategoryId = id;
+                              _page = 1;
+                              _hasMore = true;
+                            });
+                          }
                           _savePreferences();
                           _loadEvents(page: 1);
                         },
                         child: Container(
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: selected
                               ? AppTheme.gradientButtonDecoration()
                               : BoxDecoration(
@@ -302,9 +554,9 @@ class _EventListPageState extends State<EventListPage> {
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    }),
+                  ),
                 ),
               ),
             
@@ -489,8 +741,12 @@ class _EventListPageState extends State<EventListPage> {
     _searchDebounce?.cancel();
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _cityController.removeListener(_onCityChanged);
+    _cityController.dispose();
+    _citySearchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _closeCityDropdown();
     super.dispose();
   }
 }
