@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-// auth pages are imported via the splash/route flow when needed
-import 'pages/splash_page.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'routes.dart';
 import 'services/api_service.dart';
 import 'services/auth_manager.dart';
 import 'theme/app_theme.dart';
@@ -8,6 +8,7 @@ import 'theme/app_theme.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
+  usePathUrlStrategy();
   runApp(const MyApp());
 }
 
@@ -27,7 +28,7 @@ class _MyAppState extends State<MyApp> {
     super.initState();
     _api = ApiService(null, () async {
       await _auth.clearToken();
-      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(AppRoutes.splash, (route) => false);
     });
     _auth = AuthManager(_api);
   }
@@ -40,15 +41,8 @@ class _MyAppState extends State<MyApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
-      home: SplashPage(apiService: _api, authManager: _auth),
-      onGenerateRoute: (settings) {
-        if (settings.name == '/') {
-          return MaterialPageRoute(
-            builder: (_) => SplashPage(apiService: _api, authManager: _auth),
-          );
-        }
-        return null;
-      },
+      initialRoute: AppRoutes.splash,
+      onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, _api, _auth),
     );
   }
 }
